@@ -1,6 +1,3 @@
-import sys
-sys.modules['audioop'] = None  # Patch for Python 3.13
-
 import discord
 from discord.ext import tasks, commands
 from discord import app_commands
@@ -15,29 +12,24 @@ MONGO_URI = os.environ['MONGO_URI']
 GUILD_ID = int(os.environ['GUILD_ID'])
 VANITY = ".gg/pussie"
 
-# Discord client setup
 intents = discord.Intents.default()
 intents.members = True
 intents.presences = True
 client = commands.Bot(command_prefix="!", intents=intents)
 
-# MongoDB setup
 mongo_client = MongoClient(MONGO_URI)
 db = mongo_client["vanityBot"]
 config_col = db["config"]
 
-# Embed helper
 def embed_msg(title, desc, color=discord.Color.blurple()):
     return discord.Embed(title=title, description=desc, color=color)
 
-# On ready
 @client.event
 async def on_ready():
     await client.tree.sync(guild=discord.Object(id=GUILD_ID))
     print(f"[Bot] Logged in as {client.user}")
     scan_statuses.start()
 
-# Slash command: Set scanner interval
 @client.tree.command(name="setscanner", description="Set scan interval in seconds", guild=discord.Object(id=GUILD_ID))
 @app_commands.checks.has_permissions(administrator=True)
 async def setscanner(interaction: discord.Interaction, seconds: int):
@@ -45,28 +37,24 @@ async def setscanner(interaction: discord.Interaction, seconds: int):
     scan_statuses.change_interval(seconds=seconds)
     await interaction.response.send_message(embed=embed_msg("✅ Scanner Updated", f"Interval set to **{seconds}** seconds."))
 
-# Slash command: Set role
 @client.tree.command(name="setrole", description="Set role to give on status match", guild=discord.Object(id=GUILD_ID))
 @app_commands.checks.has_permissions(administrator=True)
 async def setrole(interaction: discord.Interaction, role: discord.Role):
     config_col.update_one({"_id": GUILD_ID}, {"$set": {"role_id": role.id}}, upsert=True)
     await interaction.response.send_message(embed=embed_msg("✅ Role Set", f"Role set to **{role.name}**"))
 
-# Slash command: Set log channel
 @client.tree.command(name="setlog", description="Set channel to log matched users", guild=discord.Object(id=GUILD_ID))
 @app_commands.checks.has_permissions(administrator=True)
 async def setlog(interaction: discord.Interaction, channel: discord.TextChannel):
     config_col.update_one({"_id": GUILD_ID}, {"$set": {"log_channel": channel.id}}, upsert=True)
     await interaction.response.send_message(embed=embed_msg("✅ Log Channel Set", f"Logs will be sent to {channel.mention}"))
 
-# Slash command: Set custom log message
 @client.tree.command(name="setlogmessage", description="Set the message to display in the log embed", guild=discord.Object(id=GUILD_ID))
 @app_commands.checks.has_permissions(administrator=True)
 async def setlogmessage(interaction: discord.Interaction, message: str):
     config_col.update_one({"_id": GUILD_ID}, {"$set": {"log_message": message}}, upsert=True)
     await interaction.response.send_message(embed=embed_msg("✅ Log Message Updated", f"New log message: `{message}`"))
 
-# Slash command: List members with vanity
 @client.tree.command(name="vanitymembers", description="List users with the vanity in their status", guild=discord.Object(id=GUILD_ID))
 async def vanitymembers(interaction: discord.Interaction):
     guild = client.get_guild(GUILD_ID)
@@ -85,13 +73,11 @@ async def vanitymembers(interaction: discord.Interaction):
     else:
         await interaction.response.send_message(embed=embed_msg("👥 Vanity Members", "No members currently have the vanity in their status."))
 
-# Slash command: Ping
 @client.tree.command(name="ping", description="Check bot latency", guild=discord.Object(id=GUILD_ID))
 async def ping(interaction: discord.Interaction):
     latency = round(client.latency * 1000)
     await interaction.response.send_message(embed=embed_msg("🏓 Pong", f"Latency: `{latency}ms`"))
 
-# Background scanner loop
 @tasks.loop(seconds=60)
 async def scan_statuses():
     config = config_col.find_one({"_id": GUILD_ID})
@@ -125,7 +111,6 @@ async def scan_statuses():
                                 await channel.send(embed=embed)
     await asyncio.sleep(1)
 
-# Error handler
 @setscanner.error
 @setrole.error
 @setlog.error
@@ -134,6 +119,6 @@ async def error_handler(interaction: discord.Interaction, error):
     if isinstance(error, app_commands.errors.MissingPermissions):
         await interaction.response.send_message(embed=embed_msg("❌ Permission Denied", "You need **administrator** permission."), ephemeral=True)
 
-# Keep alive + run
+# Uptime
 keep_alive()
 client.run(TOKEN)
