@@ -27,7 +27,9 @@ def embed_msg(title, desc, color=discord.Color.blurple()):
 @client.event
 async def on_ready():
     await client.tree.sync(guild=discord.Object(id=GUILD_ID))
-    print(f"[Bot] Logged in as {client.user}")
+    print(f"[Bot] Logged in as {client.user}", flush=True)
+    guild = client.get_guild(GUILD_ID)
+    print(f"[DEBUG] Found Guild: {guild}", flush=True)
     scan_statuses.start()
 
 @client.tree.command(name="setscanner", description="Set scan interval in seconds", guild=discord.Object(id=GUILD_ID))
@@ -82,7 +84,7 @@ async def ping(interaction: discord.Interaction):
 async def scan_statuses():
     config = config_col.find_one({"_id": GUILD_ID})
     if not config:
-        print("[Scanner] No configuration found in MongoDB.")
+        print("[Scanner] No configuration found in MongoDB.", flush=True)
         return
 
     interval = config.get("interval", 60)
@@ -90,36 +92,49 @@ async def scan_statuses():
 
     guild = client.get_guild(GUILD_ID)
     if not guild:
-        print("[Scanner] Guild not found. Is the bot in the server?")
+        print("[Scanner] Guild not found. Is the bot in the server?", flush=True)
         return
 
-    print(f"[Scanner] Scanning {guild.member_count} members for vanity: {VANITY}")
+    print(f"[Scanner] Scanning {guild.member_count} members for vanity: {VANITY}", flush=True)
 
     role = guild.get_role(config.get("role_id"))
     channel = guild.get_channel(config.get("log_channel"))
     log_text = config.get("log_message", f"added `{VANITY}` in their status!")
 
     for member in guild.members:
-        if member.status in [discord.Status.online, discord.Status.idle, discord.Status.dnd] and not member.bot:
-            for activity in member.activities:
-                if isinstance(activity, discord.CustomActivity) and activity.name:
-                    if VANITY in activity.name.lower():
-                        if role and role not in member.roles:
-                            await member.add_roles(role)
-                            embed = discord.Embed(
-                                title="Vanity Detected",
-                                description=f"{member.mention} {log_text}",
-                                color=discord.Color.green()
-                            )
-                            embed.set_footer(text="Role has been assigned.")
-                            if channel:
-                                try:
-                                    await channel.send(embed=embed)
-                                except discord.Forbidden:
-                                    print(f"[Error] Missing permission to send embed in channel ID {channel.id}")
+        if member.bot:
+            continue
+
+        has_vanity = False
+        for activity in member.activities:
+            if isinstance(activity, discord.CustomActivity) and activity.name:
+                if VANITY in activity.name.lower():
+                    has_vanity = True
+                    break
+
+        if member.status in [discord.Status.online, discord.Status.idle, discord.Status.dnd]:
+            if has_vanity:
+                if role and role not in member.roles:
+                    await member.add_roles(role)
+                    embed = discord.Embed(
+                        title="Vanity Detected",
+                        description=f"{member.mention} {log_text}",
+                        color=discord.Color.green()
+                    )
+                    embed.set_footer(text="Role has been assigned.")
+                    if channel:
+                        try:
+                            await channel.send(embed=embed)
+                            print(f"[Scanner] Assigned role to {member.display_name}", flush=True)
+                        except discord.Forbidden:
+                            print(f"[Error] Missing permission to send embed in channel ID {channel.id}", flush=True)
+            else:
+                if role and role in member.roles:
+                    await member.remove_roles(role)
+                    print(f"[Scanner] Removed role from {member.display_name} (vanity removed)", flush=True)
+
     await asyncio.sleep(1)
 
-# Handle missing permissions
 @setscanner.error
 @setrole.error
 @setlog.error
@@ -128,6 +143,5 @@ async def error_handler(interaction: discord.Interaction, error):
     if isinstance(error, app_commands.errors.MissingPermissions):
         await interaction.response.send_message(embed=embed_msg("❌ Permission Denied", "You need **administrator** permission."), ephemeral=True)
 
-# Keep Render alive
 keep_alive()
 client.run(TOKEN)
