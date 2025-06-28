@@ -82,17 +82,22 @@ async def ping(interaction: discord.Interaction):
 async def scan_statuses():
     config = config_col.find_one({"_id": GUILD_ID})
     if not config:
+        print("[Scanner] No configuration found in MongoDB.")
         return
 
     interval = config.get("interval", 60)
     scan_statuses.change_interval(seconds=interval)
 
     guild = client.get_guild(GUILD_ID)
+    if not guild:
+        print("[Scanner] Guild not found. Is the bot in the server?")
+        return
+
+    print(f"[Scanner] Scanning {guild.member_count} members for vanity: {VANITY}")
+
     role = guild.get_role(config.get("role_id"))
     channel = guild.get_channel(config.get("log_channel"))
     log_text = config.get("log_message", f"added `{VANITY}` in their status!")
-
-    print(f"[Scanner] Scanning {guild.member_count} members for vanity: {VANITY}")
 
     for member in guild.members:
         if member.status in [discord.Status.online, discord.Status.idle, discord.Status.dnd] and not member.bot:
@@ -108,9 +113,13 @@ async def scan_statuses():
                             )
                             embed.set_footer(text="Role has been assigned.")
                             if channel:
-                                await channel.send(embed=embed)
+                                try:
+                                    await channel.send(embed=embed)
+                                except discord.Forbidden:
+                                    print(f"[Error] Missing permission to send embed in channel ID {channel.id}")
     await asyncio.sleep(1)
 
+# Handle missing permissions
 @setscanner.error
 @setrole.error
 @setlog.error
@@ -119,6 +128,6 @@ async def error_handler(interaction: discord.Interaction, error):
     if isinstance(error, app_commands.errors.MissingPermissions):
         await interaction.response.send_message(embed=embed_msg("❌ Permission Denied", "You need **administrator** permission."), ephemeral=True)
 
-# Uptime
+# Keep Render alive
 keep_alive()
 client.run(TOKEN)
