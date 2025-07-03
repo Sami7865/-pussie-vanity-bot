@@ -10,7 +10,7 @@ import os
 TOKEN = os.environ['DISCORD_TOKEN']
 MONGO_URI = os.environ['MONGO_URI']
 GUILD_ID = int(os.environ['GUILD_ID'])
-VANITY = ".gg/pussie"
+VANITY = ".gg/moggs"
 
 intents = discord.Intents.default()
 intents.members = True
